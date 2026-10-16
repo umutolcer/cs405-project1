@@ -18,7 +18,7 @@ export function createCamera() {
     up: [0, 1, 0],
     fovY: Math.PI / 4, // radians
     near: 0.1,
-    far: 100,
+    far: 8,
     projection: 'perspective', // or 'orthographic'
     orthoHeight: 2.2, // world units visible vertically in orthographic mode
   };

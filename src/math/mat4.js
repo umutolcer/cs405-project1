@@ -1,82 +1,105 @@
-/**
- * mat4 — 4×4 matrices for Parts A and C.
- *
- * CONVENTIONS (the tests check exactly these):
- *   • A matrix is a Float32Array(16) in COLUMN-MAJOR order — the layout WebGPU
- *     expects for a mat4x4f in a uniform buffer. Element (row r, column c)
- *     lives at index  c * 4 + r.  The translation of an affine matrix is
- *     therefore at indices 12, 13, 14.
- *   • Column vectors: a point p is transformed as  M · p.
- *     multiply(A, B) returns A·B, so B is applied FIRST.
- *   • Right-handed world space. Angles in RADIANS. A positive angle rotates
- *     counter-clockwise when you look down the axis towards the origin
- *     (rotateZ(π/2) takes +x to +y).
- *   • View space: the camera sits at the origin and looks down −z, +y is up.
- *   • Clip space is WebGPU's: after the divide by w, x and y are in [−1, 1]
- *     and z is in [0, 1] (near → 0, far → 1). NOT OpenGL's [−1, 1].
- *
- * No maths libraries (no gl-matrix, no Three.js). Tests: tests/mat4.test.js
- */
-import { todo } from './todo.js';
+import * as v3 from './vec3.js';
 
-/* ------------------------------------------------------------- Part A ---- */
+export function identity() {
+  return new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+}
 
-/** The 4×4 identity. */
-export function identity() { return todo('mat4.identity'); }
+export function multiply(a, b) {
+  const out = new Float32Array(16);
+  for (let col = 0; col < 4; col++) {
+    for (let row = 0; row < 4; row++) {
+      let sum = 0;
+      for (let k = 0; k < 4; k++) sum += a[k * 4 + row] * b[col * 4 + k];
+      out[col * 4 + row] = sum;
+    }
+  }
+  return out;
+}
 
-/** A · B (apply B first, then A). Must not modify a or b. */
-export function multiply(a, b) { return todo('mat4.multiply'); }
+export function translate(tx, ty, tz) {
+  const m = identity();
+  m[12] = tx; m[13] = ty; m[14] = tz;
+  return m;
+}
 
-/** Translation by (tx, ty, tz). */
-export function translate(tx, ty, tz) { return todo('mat4.translate'); }
+export function rotateX(rad) {
+  const c = Math.cos(rad), s = Math.sin(rad);
+  return new Float32Array([1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1]);
+}
 
-/** Rotation by `rad` about the x axis. */
-export function rotateX(rad) { return todo('mat4.rotateX'); }
+export function rotateY(rad) {
+  const c = Math.cos(rad), s = Math.sin(rad);
+  return new Float32Array([c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]);
+}
 
-/** Rotation by `rad` about the y axis. */
-export function rotateY(rad) { return todo('mat4.rotateY'); }
+export function rotateZ(rad) {
+  const c = Math.cos(rad), s = Math.sin(rad);
+  return new Float32Array([c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+}
 
-/** Rotation by `rad` about the z axis. */
-export function rotateZ(rad) { return todo('mat4.rotateZ'); }
+export function scale(sx, sy, sz) {
+  return new Float32Array([sx, 0, 0, 0, 0, sy, 0, 0, 0, 0, sz, 0, 0, 0, 0, 1]);
+}
 
-/** Non-uniform scale by (sx, sy, sz). */
-export function scale(sx, sy, sz) { return todo('mat4.scale'); }
+export function transpose(m) {
+  const out = new Float32Array(16);
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) out[c * 4 + r] = m[r * 4 + c];
+  return out;
+}
 
-/** Mᵀ */
-export function transpose(m) { return todo('mat4.transpose'); }
+export function invertRigid(m) {
+  const out = identity();
+  for (let c = 0; c < 3; c++) {
+    for (let r = 0; r < 3; r++) out[c * 4 + r] = m[r * 4 + c];
+  }
+  for (let r = 0; r < 3; r++) {
+    out[12 + r] = -(out[r] * m[12] + out[4 + r] * m[13] + out[8 + r] * m[14]);
+  }
+  return out;
+}
 
-/**
- * Inverse of a RIGID transform M = T·R (rotation + translation only, no scale).
- * Do not write a general 4×4 inverse: use the structure (Week 3).
- */
-export function invertRigid(m) { return todo('mat4.invertRigid'); }
+export function transformVec4(m, v) {
+  return Array.from({ length: 4 }, (_, r) =>
+    m[r] * v[0] + m[4 + r] * v[1] + m[8 + r] * v[2] + m[12 + r] * v[3]);
+}
 
-/** M · v for a 4-component v = [x, y, z, w]; returns [x', y', z', w']. */
-export function transformVec4(m, v) { return todo('mat4.transformVec4'); }
+export function lookAt(eye, target, up) {
+  let back = v3.normalize(v3.sub(eye, target));
+  if (v3.length(back) < 1e-10) back = [0, 0, 1];
+  let right = v3.cross(up, back);
+  if (v3.length(right) < 1e-8) {
+    const alternate = Math.abs(back[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+    right = v3.cross(alternate, back);
+  }
+  right = v3.normalize(right);
+  const camUp = v3.cross(back, right);
+  return new Float32Array([
+    right[0], camUp[0], back[0], 0,
+    right[1], camUp[1], back[1], 0,
+    right[2], camUp[2], back[2], 0,
+    -v3.dot(right, eye), -v3.dot(camUp, eye), -v3.dot(back, eye), 1,
+  ]);
+}
 
-/* ------------------------------------------------------------- Part C ---- */
+export function perspective(fovY, aspect, near, far) {
+  const f = 1 / Math.tan(fovY / 2);
+  const z = far / (near - far);
+  return new Float32Array([
+    f / aspect, 0, 0, 0,
+    0, f, 0, 0,
+    0, 0, z, -1,
+    0, 0, z * near, 0,
+  ]);
+}
 
-/**
- * View matrix for a camera at `eye` looking at `target`, with `up` as the
- * approximate up direction. Build the camera basis with two cross products.
- * Must stay finite when `up` is parallel to the view direction — handle it.
- * eye, target, up: [x, y, z]
- */
-export function lookAt(eye, target, up) { return todo('mat4.lookAt'); }
-
-/**
- * Perspective projection for WebGPU (depth z ∈ [0, 1]).
- * fovY: vertical field of view in radians; aspect = width / height;
- * near, far: positive distances along −z.
- */
-export function perspective(fovY, aspect, near, far) { return todo('mat4.perspective'); }
-
-/**
- * Orthographic projection for WebGPU (depth z ∈ [0, 1]) of the box
- * x ∈ [left, right], y ∈ [bottom, top], z ∈ [−near, −far] in view space.
- */
 export function orthographic(left, right, bottom, top, near, far) {
-  return todo('mat4.orthographic');
+  const dx = right - left, dy = top - bottom, dz = near - far;
+  return new Float32Array([
+    2 / dx, 0, 0, 0,
+    0, 2 / dy, 0, 0,
+    0, 0, 1 / dz, 0,
+    -(right + left) / dx, -(top + bottom) / dy, near / dz, 1,
+  ]);
 }
 
 /* ------------------------------------------------- provided (not graded) - */

@@ -1,131 +1,106 @@
-# CS405 Project 1 — Transformations, Projection & Curves from Paintings
+# CS405 Project 1 — Transformations, Projection & Curves
 
-Starter code for Project 1 (Fall 2026). Read the handout `CS405_Project1_2026.docx`
-for the rules, deliverables and grading, and `Project1/index.html` for the live
-demos of each part.
+## Requirements
 
-> **Replace this README** with your own before you submit (Part E): how to run
-> your application and what every control does.
+- Node.js 20.19 or newer
+- Current WebGPU-capable browser (Chrome or Edge recommended)
+- A local development server (Vite)
 
-## 1. Getting started
+## Run
 
-Requirements: **Node.js 20.19 or newer** (`node -v`) and a browser with WebGPU —
-current Chrome or Edge, Safari 26+, or Firefox 141+ on Windows.
+Open a terminal in the project directory (where `package.json` is located):
 
 ```bash
 npm install
-npm run dev        # opens http://localhost:5173
-npm test           # unit tests for your maths (they fail until you implement it)
+npm run dev
 ```
 
-You should see your painting and a panel on the right with a frame-time counter.
-The Camera box says **PLACEHOLDER view** until `lookAt`, `perspective` and
-`multiply` work; after that it switches to your camera on its own.
+Open the local URL printed by Vite (normally `http://localhost:5173`). Do not open `index.html` directly as a file. Use `npm test` for the supplied tests and `npm run build` to build production assets. The application uses only JavaScript, WGSL and WebGPU; no external graphics/mathematics libraries are used.
 
-## 2. Putting it on GitHub
+## Controls
 
-The project is submitted as a GitHub repository. Keep it **private** until the
-deadline (sharing code is not allowed), and give the course staff access as
-announced on SUCourse.
+| Group | Control | Action |
+| --- | --- | --- |
+| Painting | painting | Chooses one of the five SSM paintings. |
+| Part A | translate x/y/z | Moves the orange object. |
+| Part A | rotation | Rotates the object around its z axis (radians). |
+| Part A | scale | Uniformly scales the orange object. |
+| Part A | active order | Switches the orange object's model matrix between `T·R·S` and `S·R·T`. Both resulting matrices stay visible. |
+| Part B | node axes | Draws local x/y/z axes (red/green/blue) for each graph node. |
+| Part D | curve family | Switches between three-segment C¹ Bézier, Catmull–Rom, and cubic B-spline curves. |
+| Part D | edit points | Enables selection and dragging of control points over the painting. |
+| Part D | control polygons | Displays the control-point markers and guide lines. |
+| Part D | de Casteljau | Displays successive interpolated levels for the first Bézier segment. |
+| Part D | construction t | Changes the construction parameter independently from the moving object. |
+| Part D | pause animation / speed | Stops/restarts the curve-following object and adjusts its speed. |
+| Part D | Export curve JSON | Downloads normalized `(u,v)` coordinates with the current painting name. |
+| Part C | projection | Chooses the orbit camera's perspective or orthographic projection. |
+| Part C | fov / near / far / ortho height | Edits the orbit camera's projection parameters. |
+| Part E | view | Switches between the orbit camera and the fixed inspection camera. |
+| Part E | inspection frustum | Toggles the orbit camera's frustum in inspection view. |
+| Part E | debug axes | Toggles all local coordinate axes. |
+| Part E | Reset scene and camera | Restores the initial view, transforms and curve control points. |
+
+**Mouse**: left-drag empty space to orbit, mouse wheel to zoom. When curve editing is enabled, click and drag a coloured control cube to move it. Shift-click moves the nearest control point to the clicked location, and it can then be dragged. Camera orbit and curve editing work in the orbit view; the inspection camera stays fixed. **Keyboard**: `R` resets and `Space` pauses or resumes the curve follower.
+
+The default painting is **Şeker Ahmed Paşa, Kavunlu Natürmort**, with Bézier control points placed along the melon contour. When choosing another painting, adjust the points to its specific contour before exporting; the initial points are examples for the default image.
+
+## Code layout
+
+- `src/math/vec3.js`: 3D vector operations.
+- `src/math/mat4.js`: column-major 4×4 matrices, transformations, lookAt and WebGPU projections.
+- `src/math/curves.js`: Bernstein bases, cubic Bézier, de Casteljau, C¹ joints, Catmull–Rom and B-spline.
+- `src/scene/node.js`: hierarchical world-matrix traversal.
+- `src/scene/scene.js`: scene graph, animations, editable control points, path geometry and interaction.
+- `src/scene/curveExport.js`: normalized curve export.
+- `src/render/objects.js`: GPU pipelines for cubes and line overlays.
+- `src/render/shaders/mesh.wgsl` and `lines.wgsl`: WGSL vertex and fragment shaders.
+- `src/main.js`: canvas, panel, orbit and inspection cameras, frame loop.
+- `src/ui/`: controls, statistics, mouse events.
+- `public/paintings/`: bundled museum images.
+- `tests/`: original course tests, unchanged.
+
+## Coordinate conventions
+
+Matrices are `Float32Array(16)` in column-major layout and multiply column vectors from the left. `multiply(A,B)` represents `A·B`, so the rightmost transform is applied first. Rotations use radians; the world is right-handed, with the camera looking down negative z in view space. WebGPU's normalized depth interval is `[0,1]`.
+
+Painting-space world coordinates are `x∈[-a,a]`, `y∈[-1,1]`, where `a` is image width divided by image height, with painting at `z=0` and 3D objects at positive z. JSON control points are normalized to `u,v∈[0,1]` with v increasing downward.
+
+## Scene hierarchy
+
+```text
+Gallery
+├── Transform Cube
+├── Left Cube
+└── Moving Group
+    ├── Rotating Arm
+    │   ├── Arm Rod
+    │   └── Satellite
+    └── Pivot Marker
+```
+
+The `Satellite` world matrix is displayed under Part B. The curve follower moves over the painting according to the current curve and rotates to align with the tangent. Lines, control points, meshes, the painting and the two cameras share one render loop.
+
+## Submission
+
+The course handout also requires a separate 3–5-page PDF report with derivations, screenshots, measured frame times, GPU information, and a description of debugging. Gather these from your own machine and application; see `REPORT_NOTES.md` for a guide. Add your own `report.pdf` before submission.
+
+Create a **private** GitHub repository and invite the TA account `m-javadian-farzaneh` as directed on SUCourse. Initialize and connect your local repository (replace `<username>` with your GitHub username):
 
 ```bash
 git init
-git add .
-git commit -m "CS405 Project 1 starter"
 git branch -M main
-git remote add origin https://github.com/<you>/cs405-project1.git
-git push -u origin main
+git remote add origin https://github.com/<username>/cs405-project1.git
 ```
 
-At the end: `git tag project1-final && git push origin project1-final`.
-The tag's timestamp is what gets graded.
+For the final submission, commit the finished project, then create and push tag `project1-final`:
 
-## 3. What is provided and what is yours
+```bash
+git add .
+git commit -m "Complete CS405 Project 1"
+git tag project1-final
+git push origin main
+git push origin project1-final
+```
 
-| Path | Status | Part |
-|---|---|---|
-| `src/render/gpu.js` | provided — device, canvas, sRGB output, resize | |
-| `src/render/renderer.js` | provided — one render pass per frame with depth; vertex counter | E |
-| `src/render/painting.js` | provided — the painting as a textured quad; **a complete example draw** | |
-| `src/render/texture.js` | provided — image → `rgba8unorm-srgb` texture with mipmaps | |
-| `src/render/shaders/*.wgsl` | provided — `toOutput()` for correct sRGB | |
-| `src/ui/panel.js`, `stats.js`, `input.js` | provided — panel, frame time, pointer events | E |
-| `src/scene/geometry.js` | provided — cube and axes vertex data | |
-| `src/math/vec3.js` | **TODO** | A, C |
-| `src/math/mat4.js` | **TODO** — `format()` is provided | A, C |
-| `src/math/curves.js` | **TODO** | D |
-| `src/scene/node.js` | **TODO** `updateWorld()` | B |
-| `src/scene/camera.js` | uses your `mat4`; you add orbit controls in `main.js` | C |
-| `src/scene/scene.js` | **yours** — objects, scene graph, curves | A, B, D |
-| `src/scene/curveExport.js` | **TODO** `curveToJSON()`; `downloadJSON()` is provided | D |
-| `src/main.js` | wiring and render loop — you will extend it | C, E |
-
-Every function you still have to write throws `NotImplemented` ("TODO: implement …").
-Keep the folder split `math/ scene/ render/ ui/` (Part E grades code structure).
-You may add files.
-
-## 4. Conventions — the tests check these
-
-- Matrices are `Float32Array(16)`, **column-major**: element (row r, col c) is at `c*4 + r`;
-  translation sits at indices 12, 13, 14. This is exactly what you upload to a WGSL `mat4x4f`.
-- Column vectors: `p' = M · p`. `multiply(A, B)` is `A·B`, so `B` acts first.
-- Right-handed world; angles in **radians**; `rotateZ(π/2)` takes +x to +y.
-- View space: camera at the origin looking down **−z**, +y up.
-- Clip space is **WebGPU's**: after dividing by w, x, y ∈ [−1, 1] and **z ∈ [0, 1]**
-  (near → 0, far → 1). OpenGL's [−1, 1] depth formulas fail the tests.
-- The painting quad: centred at the origin in the plane z = 0, y ∈ [−1, 1],
-  x ∈ [−a, a] with a = image width / height. "In front of the painting" means z > 0.
-- Colour: shaders work in **linear** RGB and return `toOutput(colour)`. Textures
-  you load with `textureFromBitmap()` are sRGB and decode to linear automatically.
-
-## 5. Tests
-
-`npm test` runs `tests/*.test.js` with Node's built-in test runner (no extra
-packages). `npm run test:watch` re-runs them when you save. Until you implement
-a function its tests fail with `TODO: implement <name>`; the goal is all green.
-For the second curve family, implement `catmullRom` **or** `bspline` (+ `bsplineBasis`);
-the tests skip the one you leave out.
-
-The tests check the conventions, not your whole project: passing them is
-necessary, not sufficient. Do not edit the tests to make them pass.
-
-## 6. Drawing your own objects
-
-`render/painting.js` is a full, small example: vertex buffer → uniform buffer →
-bind group → pipeline → `draw()`. Copy its structure for a mesh pipeline
-(`scene/geometry.js` gives you a cube with normals). Two things that catch people out:
-
-- `queue.writeBuffer()` calls all run **before** the frame's commands. Objects
-  that share one uniform buffer all see the last value. Use one uniform buffer
-  per object (or one big buffer with dynamic offsets).
-- Every pipeline that draws to the canvas needs
-  `targets: [{ format: gpu.viewFormat }]`, `constants: fragmentConstants(gpu)` in its
-  fragment stage, and `depthStencil: { format: DEPTH_FORMAT, … }`. Build shaders with
-  `createShader()` so `toOutput()` is available.
-
-Call `renderer.countDraw(vertexCount)` after each draw so the vertex counter is right.
-
-## 7. Choosing a painting
-
-Pick one in the panel, with `?painting=<id>` in the URL, or set `DEFAULT_PAINTING`
-in `src/config.js`. Bundled: `kavunlu`, `kabatas`, `moda`, `selim-turbesi`,
-`ormanda-karaca`. To use another painting from the Sakıp Sabancı Museum collection,
-put the image in `public/paintings/` (long side about 1280 px) and add an entry
-to `PAINTINGS` in `src/config.js`.
-
-## 8. Curve export format (Part D)
-
-See the comment at the top of `src/scene/curveExport.js`. Control points are in
-normalised painting coordinates (u, v ∈ [0, 1], origin top-left, v down).
-
-## 9. Troubleshooting
-
-- **"This browser has no WebGPU"**: update the browser; serve from `localhost`
-  (opening `index.html` as a file does not work). Linux Chrome may need
-  `chrome://flags/#enable-unsafe-webgpu` and `#enable-vulkan`.
-- **Black or blank canvas, no error on the page**: open the browser console. WGSL
-  errors are printed with line numbers that match your `.wgsl` file.
-- **Everything is too dark or washed out**: you encoded sRGB twice, or not at all.
-  Return `toOutput(linearColour)`; do not apply gamma yourself.
-- **Objects disappear when the camera moves**: check near/far and that your
-  perspective maps depth to [0, 1], not [−1, 1].
+Do not create the final tag until your source, exported JSON and `report.pdf` are ready. The assignment deadline is **8 November 2026 at 23:59 Istanbul time**.

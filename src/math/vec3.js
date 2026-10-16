@@ -1,31 +1,14 @@
-/**
- * vec3 — 3-component vectors as plain arrays [x, y, z].
- *
- * Every function returns a NEW array and never modifies its arguments.
- * Write these yourself (Week 1, Linear Algebra I). Tests: tests/vec3.test.js
- */
-import { todo } from './todo.js';
-
-/** a + b */
-export function add(a, b) { return todo('vec3.add'); }
-
-/** a − b */
-export function sub(a, b) { return todo('vec3.sub'); }
-
-/** s · a  (s is a number) */
-export function scale(a, s) { return todo('vec3.scale'); }
-
-/** a · b  → number */
-export function dot(a, b) { return todo('vec3.dot'); }
-
-/** a × b  (right-handed: cross([1,0,0],[0,1,0]) = [0,0,1]) */
-export function cross(a, b) { return todo('vec3.cross'); }
-
-/** |a|  → number */
-export function length(a) { return todo('vec3.length'); }
-
-/**
- * a / |a|.
- * For a zero-length vector return [0, 0, 0] — never NaN.
- */
-export function normalize(a) { return todo('vec3.normalize'); }
+export const add = (a, b) => a.map((v, i) => v + b[i]);
+export const sub = (a, b) => a.map((v, i) => v - b[i]);
+export const scale = (a, s) => a.map((v) => v * s);
+export const dot = (a, b) => a.reduce((sum, v, i) => sum + v * b[i], 0);
+export const cross = (a, b) => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
+export const length = (a) => Math.hypot(...a);
+export const normalize = (a) => {
+  const n = length(a);
+  return n > 1e-12 ? scale(a, 1 / n) : [0, 0, 0];
+};
