@@ -1,124 +1,123 @@
-# CS405 Project 1
+# CS405 Project 1 — Transformations, Projection & Curves from a Painting
 
-WebGPU scene based on a painting from the Sakıp Sabancı Museum collection. Parts A–E (transformations, scene graph, camera and projection, curves over the painting, integration) live in one application.
+One WebGPU application (WebGPU + WGSL, plain JavaScript, Vite) that turns
+**Şeker Ahmed Paşa — *Kavunlu Natürmort*** (Sakıp Sabancı Museum collection)
+into a small 3D scene. The painting hangs in the scene as a textured quad;
+objects stand in front of it, a camera orbits around them, and a curve traces
+the outline of the melon. No maths or scene-graph library is used: the matrix
+code (`src/math/`) is written from scratch.
 
-## Requirements
+```
+p_clip = P · V · M · p_object        (column vectors, column-major Float32Array)
+```
 
-- Node.js 20.19 or newer
-- A browser with WebGPU support (current Chrome or Edge recommended)
+## Run it
 
-## Running the project
-
-From the directory containing `package.json`:
+Requires Node.js ≥ 20.19 and a browser with WebGPU (current Chrome or Edge;
+Safari 26+; Firefox 141+ on Windows).
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the address printed by Vite, usually `http://localhost:5173/`.
-
-To run the tests or create a production build:
+Open the address Vite prints (usually `http://localhost:5173/`).
 
 ```bash
-npm test
-npm run build
+npm test          # 88 unit tests (maths, curves, scene graph, camera, picking)
+npm run build     # production build in dist/ (npm run preview to serve it)
 ```
 
-On Windows PowerShell, `npm.cmd` can be used instead of `npm` if script execution is restricted.
+## What is where
 
-## Part A — Transformations
+| Part | Points | Code | Where to look in the app |
+| --- | --- | --- | --- |
+| A · Transformations | 20 | `src/math/mat4.js`, `src/scene/gallery.js` | *Part A* panel |
+| B · Scene graph | 15 | `src/scene/node.js`, `src/scene/gallery.js` | *Part B* panel, node axes |
+| C · Camera and projection | 20 | `src/math/mat4.js`, `src/scene/camera.js`, `src/scene/orbit.js` | *Part C* panel, inset, inspection view |
+| D · Curves | 25 | `src/math/curves.js`, `src/scene/trace.js` | *Part D* panel |
+| E · Integration | 10 | `src/main.js`, `src/render/`, `src/ui/` | *Part E* panel, frame-time box |
 
-The orange cube has controls for its position, rotation, and size. The controls are in the **Part A · Transformations** panel.
-
-| Control | Description |
-| --- | --- |
-| `translate x` | Moves the cube along the x-axis. |
-| `translate y` | Moves the cube along the y-axis. |
-| `translate z` | Moves the cube along the z-axis. |
-| `rotation` | Rotates the cube around the z-axis, in radians. |
-| `scale` | Changes the cube's uniform scale. |
-| `active order` | Switches between `T · R · S` and `S · R · T`. |
-
-Both model matrices are displayed in the panel. With column vectors, `T · R · S` scales first, rotates second, and translates last. `S · R · T` applies these operations in the opposite order, producing a different result.
-
-The matrix functions are implemented in `src/math/mat4.js`, with vector operations in `src/math/vec3.js`.
-
-## Part B — Scene Graph
-
-The scene uses parent-child nodes with local and world transforms. Each node's world matrix is calculated from its parent's world matrix and its own local matrix:
-
-`M_world = M_parent_world · M_local`
-
-The hierarchy is:
+Project layout:
 
 ```text
-Gallery
-├── Transform Cube
-├── Left Cube
-└── Moving Group
-    ├── Rotating Arm
-    │   ├── Arm Rod
-    │   └── Satellite
-    └── Pivot Marker
+src/math/     vec3, mat4 (own matrix library), curves
+src/scene/    scene graph node, gallery (parts A and B), camera, orbit, traced curve, painting space
+src/render/   WebGPU device, renderer (main pass + inset pass), pipelines, WGSL shaders, ribbon geometry
+src/ui/       control panel, readouts, pointer input, stats box
+tests/        node:test unit tests
+report/       report.html and its figures
+report.pdf    the report
+curve-kavunlu.json   the traced curve, exported by the application
 ```
-
-The rotating arm carries its child objects as it moves, demonstrating how transforms propagate through the hierarchy.
-
-The **Part B · Scene graph** panel includes a `node axes` toggle to show the local coordinate axes of each node: red for x, green for y, and blue for z. The world matrix of the `Satellite` node is displayed and updates during animation.
-
-Scene graph traversal and world-matrix updates are implemented in `src/scene/node.js`. The scene setup and animation are in `src/scene/scene.js`.
-
-## Part C — Camera and projection
-
-`lookAt`, `perspective` (WebGPU depth range z ∈ [0, 1]) and `orthographic` are in `src/math/mat4.js`; the camera object is in `src/scene/camera.js`.
-
-| Control | Description |
-| --- | --- |
-| Drag on empty space | Orbits the camera around its target. |
-| Mouse wheel | Zooms (changes the orbit radius). |
-| `projection` | Switches between perspective and orthographic at run time. |
-| `fov`, `near`, `far`, `ortho height` | Camera parameters; eye, target, fov, near and far are shown on screen. |
-| `view` (Part E panel) | `Fixed inspection camera` shows the scene from a second, fixed camera together with the frustum of the orbit camera. |
-
-`lookAt` handles the case where `up` is parallel to the view direction by choosing an alternative up vector.
-
-## Part D — Curves over the painting
-
-| Control | Description |
-| --- | --- |
-| `curve family` | C¹ piecewise cubic Bézier (3 segments), Catmull–Rom spline, or uniform cubic B-spline. |
-| `edit points` | Enables dragging of the coloured control cubes in the plane of the painting. Shift + click moves the nearest point to the cursor. |
-| `control polygons` | Shows or hides control polygons and control points. |
-| `de Casteljau` + `construction t` | Draws the de Casteljau construction of the first Bézier segment for the chosen t. |
-| `speed`, `pause animation` | Controls the object moving along the curve, oriented by the curve tangent. |
-| `Export curve JSON` | Downloads the curve with control points in normalised painting coordinates (u, v ∈ [0, 1]); an example is `curve-kavunlu.json`. |
-
-C¹ continuity at the joints of the Bézier curve is kept while dragging: `P₂(i) = 2·P₃(i) − P₁(i+1)` (see `c1NextControl` in `src/math/curves.js`).
-
-## Part E — Integration
-
-All parts run in one page. The **Part E · View** panel switches between the orbit and inspection cameras, toggles the frustum and the node axes, and resets the scene (button or `R` key). `Space` pauses the animation. The stats box shows frame time, draw calls and the number of vertices submitted per frame.
-
-## Project layout
-
-```text
-src/math/     vec3, mat4, curves
-src/scene/    scene graph nodes, scene setup, camera, curve export
-src/render/   WebGPU device, pipelines, shaders, draw helpers
-src/ui/       control panel, pointer input, stats
-tests/        unit tests (npm test)
-```
-
-## Painting and rendering
-
-Choose a painting using the **Painting** selector. The default is **Şeker Ahmed Paşa — Kavunlu Natürmort**. The painting is displayed as a textured quad, with the 3D objects positioned in front of it.
-
-The application uses WebGPU and WGSL. The render loop and controls are organized across `src/main.js`, `src/render/`, and `src/ui/`. Frame time and vertex count are shown in the interface.
 
 ## Conventions
 
-- Matrices use a column-major `Float32Array(16)` layout.
-- Transformations act on column vectors, and matrix products are evaluated right to left.
-- Rotation angles are in radians.
-- The coordinate system is right-handed.
+- Column vectors: `p' = M · p`; the rightmost matrix acts first.
+- Matrices are column-major `Float32Array(16)`, uploaded unchanged to uniform buffers.
+- **`M = T · R · S` is used everywhere** (scale, then rotate, then translate);
+  a node's world matrix is `parent.world · local`.
+- Right-handed coordinates; the camera looks down its own −z axis.
+- WebGPU clip space: depth `z ∈ [0, 1]` (not OpenGL's `[−1, 1]`).
+- The painting is the quad `x ∈ [−a, a]`, `y ∈ [−1, 1]` in the plane `z = 0`
+  (`a = 1280 / 893`); objects in front of it have `z > 0`.
+- Painting coordinates `(u, v) ∈ [0, 1]²`: `u` right, `v` down, origin at the top-left of the image.
+
+## Controls
+
+Mouse (in the orbit view)
+
+| Action | Effect |
+| --- | --- |
+| Drag on empty space | Orbit the camera around the painting |
+| Mouse wheel | Zoom |
+| Drag a control point | Move it in the plane of the painting (Bézier: the C¹ condition is kept) |
+| Shift + click | Move the nearest control point to the cursor |
+
+Keys: `R` reset · `Space` pause · `V` switch orbit / inspection view · `A` node axes.
+The `☰` button hides the side panel.
+
+**Part E · View and debug**
+
+| Control | Effect |
+| --- | --- |
+| `view` | *Orbit camera* (mouse-controlled) or *Fixed inspection camera* (shows the orbit camera's frustum) |
+| `inspection inset` | Picture-in-picture of the inspection camera while orbiting |
+| `Front view of the painting` | Puts the orbit camera straight in front of the painting, fitted to the window |
+| `Reset scene and camera` | Restores every setting, the camera and the traced curve |
+| `pause animation`, `animation speed` | Stop / scale the animation clock |
+| `node axes` | Local axes of every scene-graph node (red x, green y, blue z) |
+| `camera frustum` | Frustum of the orbit camera (near plane cyan, far plane pink) |
+| `control polygon and points` | Control polygon and draggable control points |
+| `de Casteljau construction` | Repeated linear interpolation at parameter *t* |
+| `wireframe of the other order` | Thin cube drawn with the composition order that is **not** selected |
+
+The box at the top of the panel shows the frame time, CPU time per frame, the
+number of draw calls and the number of vertices submitted per frame, and the GPU
+reported by WebGPU.
+
+**Part A** — `translate x/y/z`, `rotate about` (x, y or z), `rotation (rad)`,
+`scale x/y/z` drive the orange cube. `order` switches between `M = T·R·S` and
+`M = S·R·T`; both 4×4 matrices are printed below the sliders and the one in
+use is marked. Three more objects (cyan cube, green sphere, plate) are placed
+with `T·R·S` in front of the painting.
+
+**Part B** — the tree is listed in the panel. `animation time` scrubs the
+clock; the panel prints the arm and joint angles and the world matrix of the
+leaf node *Moon* (used for the hand check in the report).
+
+**Part C** — `projection` (perspective / orthographic, switchable at run time),
+`fov`, `near`, `far`, `ortho height`. The panel shows eye, target, fov, near and
+far, the far/near ratio and the depth resolution (24-bit) at the painting.
+
+**Part D** — `curve family`: C¹ piecewise cubic Bézier (3 segments),
+Catmull–Rom spline (passes through every point) or uniform cubic B-spline.
+`de Casteljau t` chooses the parameter of the construction (the segment that
+contains it is drawn), `object position u` / `object speed` move the box along
+the curve (oriented by the tangent), `Export curve JSON` downloads the curve
+with the control points in normalised coordinates (see `curve-kavunlu.json`).
+
+## Report
+
+`report.pdf` (source: `report/report.html`) contains the derivations,
+screenshots of every part, measured frame times and the exported JSON.
