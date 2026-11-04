@@ -2,26 +2,23 @@
  * Scene graph node — Part B.
  *
  * Each node holds a LOCAL transform (relative to its parent) and a WORLD
- * matrix that you compute by traversal:  world = parent.world · local.
+ * matrix computed by traversal:  world = parent.world · local.
  * Tests: tests/node.test.js
  */
 import * as mat4 from '../math/mat4.js';
 
-// A literal identity so nodes can be created before mat4.identity() exists.
-const I = () => new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
-
 export class SceneNode {
   /**
-   * @param {string} name   shown in debug output and your report diagram
+   * @param {string} name   shown in the UI and in the report diagram
    * @param {Float32Array} [local]  local transform (default identity)
    */
-  constructor(name, local = I()) {
+  constructor(name, local = mat4.identity()) {
     this.name = name;
     this.local = local;
-    this.world = I();
+    this.world = mat4.identity();
     this.parent = null;
     this.children = [];
-    /** Anything you want to attach: a mesh, a colour, an animation function… */
+    /** Anything attached to the node: a mesh name, a colour, … */
     this.data = {};
   }
 
@@ -34,14 +31,21 @@ export class SceneNode {
   }
 
   /**
-   * TODO (Part B): set this.world from parentWorld and this.local, then
-   * update every child recursively. Called on the root with no argument.
+   * Set this.world from the parent's world matrix and this.local, then update
+   * every child recursively. Called on the root with no argument.
    * @param {Float32Array} [parentWorld]  world matrix of the parent (identity for the root)
    */
   updateWorld(parentWorld) {
     this.world = parentWorld ? mat4.multiply(parentWorld, this.local) : new Float32Array(this.local);
     for (const child of this.children) child.updateWorld(this.world);
     return this.world;
+  }
+
+  /** Number of ancestors (the root has depth 0). */
+  get depth() {
+    let d = 0;
+    for (let n = this.parent; n; n = n.parent) d++;
+    return d;
   }
 
   /** Visit this node and all descendants depth-first: fn(node, depth). */

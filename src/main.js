@@ -2,198 +2,184 @@ import './ui/style.css';
 import { initWebGPU, showFatal } from './render/gpu.js';
 import { Renderer } from './render/renderer.js';
 import { Painting } from './render/painting.js';
-import { createCamera, viewProjection } from './scene/camera.js';
-import { createScene } from './scene/scene.js';
+import { SceneView, Z } from './render/sceneView.js';
+import { createCamera, createInspectionCamera, viewProjection, fitDistance } from './scene/camera.js';
+import { Orbit } from './scene/orbit.js';
+import { createGallery, updateGallery } from './scene/gallery.js';
+import { Trace } from './scene/trace.js';
+import { createState } from './state.js';
+import { pickRay, intersectPlaneZ, worldToUV, uvToWorld, nearestOnScreen } from './scene/space.js';
 import { createPanel } from './ui/panel.js';
+import { createControls } from './ui/controls.js';
 import { Stats } from './ui/stats.js';
 import { attachPointer } from './ui/input.js';
-import { PAINTINGS, DEFAULT_PAINTING, paintingURL } from './config.js';
+import { PAINTING, paintingURL } from './config.js';
 import * as mat4 from './math/mat4.js';
-import * as v3 from './math/vec3.js';
+
+const PICK_RADIUS_PX = 18;
+const INSET_ASPECT = 4 / 3;
 
 async function main() {
   const canvas = document.getElementById('gfx');
   const gpu = await initWebGPU(canvas);
   const renderer = new Renderer(gpu);
   const painting = new Painting(gpu);
-  const query = new URLSearchParams(location.search);
-  let current = PAINTINGS.find((p) => p.id === query.get('painting'))
-    ?? PAINTINGS.find((p) => p.id === DEFAULT_PAINTING);
-  await painting.load(paintingURL(current));
+  await painting.load(paintingURL());
+  const sceneView = new SceneView(gpu, renderer);
 
+  /* ---------------------------------------------------------------- model */
+  const state = createState();
+  const camera = createCamera();
+  const inspection = createInspectionCamera();
+  const orbit = new Orbit(camera);
+  const gallery = createGallery();
+  const trace = new Trace();
+  let selected = null; // index of the control point being dragged
+
+  /* ------------------------------------------------------------------- UI */
   const panelRoot = document.getElementById('panel');
   const panel = createPanel(panelRoot);
   const title = document.createElement('h1');
-  title.textContent = 'CS405 · Project 1';
+  title.textContent = `CS405 · Project 1 — ${PAINTING.artist}, ${PAINTING.title}`;
   panelRoot.prepend(title);
-  const stats = new Stats(panelRoot);
+  const a = gpu.adapter.info ?? {};
+  const gpuName = [a.vendor, a.architecture, a.device, a.description].filter(Boolean).join(' ') || 'unknown GPU';
+  const stats = new Stats(panelRoot, `GPU: ${gpuName}`);
+  title.after(stats.el);
 
-  const pf = panel.folder('Painting');
-  pf.select('painting', PAINTINGS.map((p) => ({ value: p.id, label: `${p.artist} — ${p.title}` })), current.id,
-    async (id) => {
-      const chosen = PAINTINGS.find((p) => p.id === id);
-      if (!chosen) return;
-      try {
-        await painting.load(paintingURL(chosen));
-        current = chosen;
-        scene.setPainting(id);
-        history.replaceState(null, '', `?painting=${encodeURIComponent(id)}`);
-      } catch (error) {
-        showFatal(`Painting could not be loaded: ${error.message}`);
-      }
-    });
+  const insetFrame = document.getElementById('inset-frame');
 
-  const camera = createCamera();
-  const inspector = createCamera();
-  inspector.eye = [7, 4.5, 9];
-  inspector.target = [0, 0, -1.5];
-  inspector.fovY = 55 * Math.PI / 180;
-  inspector.near = 0.1;
-  inspector.far = 35;
-  let viewMode = 'main';
-
-  const cf = panel.folder('Part C · Camera');
-  const camStatus = cf.text('');
-  const projectionControl = cf.select('projection', ['perspective', 'orthographic'], camera.projection,
-    (value) => { camera.projection = value; });
-  const fovControl = cf.slider('fov (degrees)', { get degrees() { return camera.fovY * 180 / Math.PI; },
-    set degrees(x) { camera.fovY = x * Math.PI / 180; } }, 'degrees', 25, 95, 1);
-  const nearControl = cf.slider('near', camera, 'near', 0.05, 1, 0.01);
-  const farControl = cf.slider('far', camera, 'far', 4, 20, 0.25);
-  const orthoControl = cf.slider('ortho height', camera, 'orthoHeight', 1.5, 7, 0.05);
-  const camReadout = cf.text('');
-  cf.note('Drag empty space to orbit. Scroll to zoom. Choose inspection to see the camera frustum.');
-
-  const scene = createScene({ gpu, renderer, painting, panel });
-  scene.setPainting(current.id);
-  const vf = panel.folder('Part E · View');
-  const viewControl = vf.select('view', [
-    { value: 'main', label: 'Orbit camera' },
-    { value: 'inspection', label: 'Fixed inspection camera' },
-  ], viewMode, (value) => { viewMode = value; scene.release(); });
-  const frustumControl = vf.toggle('inspection frustum', scene.state, 'showFrustum');
-  const viewDebugRef = vf.toggle('debug axes', scene.state, 'debugAxes');
-  const resetAll = () => {
-    Object.assign(camera, createCamera());
-    scene.reset();
-    viewMode = 'main';
-    viewControl.set(viewMode);
-    projectionControl.set(camera.projection);
-    for (const control of [fovControl, nearControl, farControl, orthoControl, frustumControl, viewDebugRef]) control.update();
-    setupOrbit();
+  const actions = {
+    reset() {
+      const fresh = createState();
+      const { a: partA, ...rest } = fresh;
+      Object.assign(state, rest);
+      Object.assign(state.a, partA); // keep the same object: the sliders are bound to it
+      Object.assign(camera, createCamera());
+      trace.reset();
+      selected = null;
+      orbit.sync();
+      actions.frontView();
+      controls.refresh();
+    },
+    frontView() { orbit.front(fitDistance(camera.fovY, canvasAspect(), painting.aspect)); },
+    viewChanged() { selected = null; },
+    familyChanged() { selected = null; },
   };
-  vf.button('Reset scene and camera', resetAll);
-  vf.note(gpu.encodeSRGB ? 'sRGB: shader encoding' : 'sRGB: canvas encoding');
+  const controls = createControls(panel, { state, camera, gallery, trace, orbit, actions });
 
-  let theta = 0, phi = Math.PI / 2, radius = 2.8;
-  function setupOrbit() {
-    const d = v3.sub(camera.eye, camera.target);
-    radius = v3.length(d);
-    theta = Math.atan2(d[0], d[2]);
-    phi = Math.acos(clamp(d[1] / radius, -1, 1));
-  }
-  setupOrbit();
-
-  function applyOrbit() {
-    const sinPhi = Math.sin(phi);
-    camera.eye = [
-      camera.target[0] + radius * sinPhi * Math.sin(theta),
-      camera.target[1] + radius * Math.cos(phi),
-      camera.target[2] + radius * sinPhi * Math.cos(theta),
-    ];
-  }
-
-  const canvasAspect = () => canvas.width / Math.max(1, canvas.height);
-  const activeCamera = () => viewMode === 'main' ? camera : inspector;
-  function hitPainting(ndc) {
-    const cam = activeCamera();
-    const forward = v3.normalize(v3.sub(cam.target, cam.eye));
-    let right = v3.normalize(v3.cross(forward, cam.up));
-    if (v3.length(right) < 1e-7) right = [1, 0, 0];
-    const up = v3.normalize(v3.cross(right, forward));
-    const aspect = canvasAspect();
-    let origin = [...cam.eye], direction = forward;
-    if (cam.projection === 'perspective') {
-      const h = Math.tan(cam.fovY / 2);
-      direction = v3.normalize(v3.add(forward, v3.add(
-        v3.scale(right, ndc[0] * h * aspect), v3.scale(up, ndc[1] * h))));
-    } else {
-      const h = cam.orthoHeight / 2;
-      origin = v3.add(origin, v3.add(v3.scale(right, ndc[0] * h * aspect), v3.scale(up, ndc[1] * h)));
-    }
-    if (Math.abs(direction[2]) < 1e-9) return null;
-    const t = (0.1 - origin[2]) / direction[2];
-    if (t < 0) return null;
-    const p = v3.add(origin, v3.scale(direction, t));
-    return [(p[0] / painting.aspect + 1) * 0.5, (1 - p[1]) * 0.5];
-  }
-
-  let selectedPointDrag = false;
-  attachPointer(canvas, {
-    down(e) {
-      if (e.button !== 0 || viewMode !== 'main') return;
-      const vp = viewProjection(camera, canvasAspect(), painting.aspect).matrix;
-      selectedPointDrag = scene.tryPick(e.ndc, vp, canvas, e.shift);
-      if (selectedPointDrag && e.shift) {
-        const point = hitPainting(e.ndc);
-        if (point) scene.dragPicked(point);
-      }
-    },
-    drag(e) {
-      if (selectedPointDrag) {
-        const point = hitPainting(e.ndc);
-        if (point) scene.dragPicked(point);
-      } else if (viewMode === 'main') {
-        theta -= e.dx * 0.005;
-        phi = clamp(phi - e.dy * 0.005, 0.08, Math.PI - 0.08);
-        applyOrbit();
-      }
-    },
-    up() { selectedPointDrag = false; scene.release(); },
-    wheel(e) {
-      if (viewMode !== 'main') return;
-      radius = clamp(radius * Math.exp(e.delta * 0.001), 1.2, 13);
-      applyOrbit();
-    },
-  });
-
+  const nextView = () => { state.view = state.view === 'orbit' ? 'inspection' : 'orbit'; selected = null; controls.refresh(); };
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLElement && ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
-    if (e.key.toLowerCase() === 'r') resetAll();
-    if (e.code === 'Space') { e.preventDefault(); scene.state.paused = !scene.state.paused; }
+    const key = e.key.toLowerCase();
+    if (key === 'r') actions.reset();
+    else if (key === 'v') nextView();
+    else if (key === 'a') { state.axes = !state.axes; controls.refresh(); }
+    else if (e.code === 'Space') { e.preventDefault(); state.paused = !state.paused; controls.refresh(); }
+  });
+  document.getElementById('panel-toggle').addEventListener('click', () => document.body.classList.toggle('no-panel'));
+
+  /* -------------------------------------------------------------- picking */
+  const canvasAspect = () => canvas.width / Math.max(1, canvas.height);
+  const canvasSize = () => canvas.getBoundingClientRect();
+  const controlPlaneHit = (ndc) =>
+    intersectPlaneZ(pickRay(camera, ndc, canvasAspect()), Z.point);
+
+  attachPointer(canvas, {
+    down(e) {
+      if (e.button !== 0 || state.view !== 'orbit' || !state.edit || !state.polygons) return;
+      const vp = viewProjection(camera, canvasAspect()).matrix;
+      const points = trace.entries().map((p) => uvToWorld(p.uv, painting.aspect, Z.point));
+      const hit = nearestOnScreen(points, vp, e.ndc, canvasSize());
+      if (!hit || (!e.shift && hit.distance > PICK_RADIUS_PX)) return;
+      selected = hit.index;
+      if (e.shift) moveSelected(e.ndc);
+    },
+    drag(e) {
+      if (selected !== null) moveSelected(e.ndc);
+      else if (state.view === 'orbit') orbit.rotate(e.dx, e.dy);
+    },
+    up() { selected = null; },
+    wheel(e) { if (state.view === 'orbit') orbit.zoom(e.delta); },
   });
 
+  function moveSelected(ndc) {
+    const p = controlPlaneHit(ndc);
+    if (p) trace.move(selected, worldToUV(p, painting.aspect));
+  }
+
+  /* ----------------------------------------------------------- frame loop */
+  let needFit = true; // fit the painting into the first real viewport size
   let previous = performance.now();
   let lastReadout = 0;
+
+  /** Inset rectangle in device pixels, top-left corner, below the panel button. */
+  function insetRect() {
+    const css = canvasSize();
+    const scale = canvas.width / css.width; // device pixels per CSS pixel
+    const w = Math.round(Math.max(240, Math.min(css.width * 0.26, 420)) * scale);
+    const h = Math.round(w / INSET_ASPECT);
+    return { x: 12 * scale, y: 46 * scale, w, h, scale };
+  }
+
   function frame(now) {
     stats.begin(now);
+    if (needFit && canvas.width > 16) { actions.frontView(); needFit = false; }
     const dt = Math.min(0.1, (now - previous) / 1000);
     previous = now;
-    scene.update(dt, now / 1000);
+    if (!state.paused) {
+      state.time += dt * state.speed;
+      state.travel = (state.travel + dt * state.speed * state.travelSpeed) % 1;
+    }
+
+    const matrices = updateGallery(gallery, state.a, state.time);
     const aspect = canvasAspect();
-    const vp = viewProjection(activeCamera(), aspect, painting.aspect);
-    const matrix = mat4.multiply(vp.matrix, painting.model);
-    renderer.render((pass) => {
-      painting.draw(pass, matrix, renderer);
-      scene.draw(pass, vp.matrix);
-      if (viewMode === 'inspection') scene.drawFrustum(pass, vp.matrix, camera, aspect);
+    const mainCamera = state.view === 'orbit' ? camera : inspection;
+    const vp = viewProjection(mainCamera, aspect).matrix;
+    const paintingMVP = (viewProj) => mat4.multiply(viewProj, painting.model);
+
+    sceneView.beginFrame();
+    sceneView.prepare({
+      gallery, matrices, trace, ui: state, selected,
+      paintingAspect: painting.aspect, orbitCamera: camera, mainAspect: aspect, travel: state.travel,
     });
+
+    const insets = [];
+    const showInset = state.view === 'orbit' && state.inset;
+    if (showInset) {
+      const r = insetRect();
+      const insetVP = viewProjection(inspection, r.w / r.h).matrix;
+      insets.push({
+        rect: r,
+        draw(pass) {
+          sceneView.drawBackdrop(pass);
+          painting.draw(pass, paintingMVP(insetVP), renderer, 1);
+          sceneView.draw(pass, insetVP, { frustum: state.frustum });
+        },
+      });
+      const css = canvasSize();
+      Object.assign(insetFrame.style, {
+        display: 'block',
+        left: `${r.x / r.scale}px`, top: `${css.top + r.y / r.scale}px`,
+        width: `${r.w / r.scale}px`, height: `${r.h / r.scale}px`,
+      });
+    } else insetFrame.style.display = 'none';
+
+    renderer.render((pass) => {
+      painting.draw(pass, paintingMVP(vp), renderer, 0);
+      sceneView.draw(pass, vp, { frustum: state.view === 'inspection' && state.frustum });
+    }, insets);
+
     if (now - lastReadout > 130) {
       lastReadout = now;
-      camStatus.set(`${viewMode === 'main' ? 'Orbit' : 'Inspection'} · ${activeCamera().projection}\nP · V · M`);
-      camReadout.set(
-        `eye    ${camera.eye.map((x) => x.toFixed(2)).join(', ')}\n` +
-        `target ${camera.target.map((x) => x.toFixed(2)).join(', ')}\n` +
-        `fovY ${(camera.fovY * 180 / Math.PI).toFixed(1)}°\n` +
-        `near ${camera.near.toFixed(2)} · far ${camera.far.toFixed(2)}`);
+      controls.update({ castInfo: sceneView.castInfo, travel: trace.sample(state.travel) });
+      controls.refreshLive();
     }
     stats.end(renderer.stats);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 }
-
-function clamp(x, min, max) { return Math.max(min, Math.min(max, x)); }
 
 main().catch((error) => {
   console.error(error);

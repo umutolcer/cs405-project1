@@ -1,5 +1,5 @@
 /**
- * Ready-made vertex data, so you do not have to type it in. Provided.
+ * Vertex data for the basic meshes.
  * Every array is interleaved as  [x, y, z,  nx, ny, nz]  per vertex
  * (stride 24 bytes), for topology 'triangle-list' unless stated.
  */

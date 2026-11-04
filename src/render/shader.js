@@ -1,6 +1,6 @@
 import colourWGSL from './shaders/colour.wgsl?raw';
 
-const PRELUDE_LINES = colourWGSL.split('\n').length; // so error line numbers match YOUR file
+const PRELUDE_LINES = colourWGSL.split('\n').length; // so error line numbers match the shader file
 
 /**
  * Create a shader module with the shared colour helpers (toOutput,

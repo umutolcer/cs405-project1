@@ -1,6 +1,7 @@
 /**
- * Frame setup: one render pass per frame into the canvas, with a depth buffer.
- * Provided. You add draw calls through the callback given to render().
+ * Frame setup: one render pass per frame into the canvas, with a depth buffer,
+ * plus optional extra passes for inset viewports (picture-in-picture).
+ * Draw calls are added through the callbacks given to render().
  */
 
 export const DEPTH_FORMAT = 'depth24plus';
@@ -35,15 +36,19 @@ export class Renderer {
 
   /**
    * Record and submit one frame.
-   * @param {(pass: GPURenderPassEncoder) => void} draw  issue your draw calls here
+   * @param {(pass: GPURenderPassEncoder) => void} draw  draw calls of the main view
+   * @param {{ rect: {x:number, y:number, w:number, h:number}, draw: (pass: GPURenderPassEncoder) => void }[]} [insets]
+   *        extra views drawn on top of the main one, in device pixels (origin top-left)
    */
-  render(draw) {
+  render(draw, insets = []) {
     const { device, context, viewFormat, encodeSRGB } = this.gpu;
     this.stats.draws = 0;
     this.stats.vertices = 0;
 
     const target = context.getCurrentTexture();
     this.#ensureDepth(target.width, target.height);
+    const colorView = target.createView({ format: viewFormat });
+    const depthView = this.depth.createView();
 
     // Clear values are written as-is. With an '-srgb' view the GPU encodes them;
     // in the fallback path we encode the clear colour ourselves.
@@ -53,13 +58,13 @@ export class Renderer {
     const pass = encoder.beginRenderPass({
       label: 'main pass',
       colorAttachments: [{
-        view: target.createView({ format: viewFormat }),
+        view: colorView,
         clearValue: { r: c[0], g: c[1], b: c[2], a: 1 },
         loadOp: 'clear',
         storeOp: 'store',
       }],
       depthStencilAttachment: {
-        view: this.depth.createView(),
+        view: depthView,
         depthClearValue: 1.0,
         depthLoadOp: 'clear',
         depthStoreOp: 'store',
@@ -67,6 +72,29 @@ export class Renderer {
     });
     draw(pass);
     pass.end();
+
+    // Insets: keep the colour already drawn, clear only the depth buffer, and
+    // restrict drawing to the inset rectangle with a viewport + scissor.
+    for (const inset of insets) {
+      const x = Math.max(0, Math.round(inset.rect.x)), y = Math.max(0, Math.round(inset.rect.y));
+      const w = Math.min(target.width - x, Math.round(inset.rect.w));
+      const h = Math.min(target.height - y, Math.round(inset.rect.h));
+      if (w < 2 || h < 2) continue;
+      const insetPass = encoder.beginRenderPass({
+        label: 'inset pass',
+        colorAttachments: [{ view: colorView, loadOp: 'load', storeOp: 'store' }],
+        depthStencilAttachment: {
+          view: depthView,
+          depthClearValue: 1.0,
+          depthLoadOp: 'clear',
+          depthStoreOp: 'store',
+        },
+      });
+      insetPass.setViewport(x, y, w, h, 0, 1);
+      insetPass.setScissorRect(x, y, w, h);
+      inset.draw(insetPass);
+      insetPass.end();
+    }
     device.queue.submit([encoder.finish()]);
   }
 }

@@ -1,5 +1,5 @@
 /**
- * The painting as a textured quad in the scene. Provided.
+ * The painting as a textured quad in the scene.
  *
  * Geometry (world space): centred at the origin in the z = 0 plane,
  * height 2 (y ∈ [−1, 1]) and width 2·aspect (x ∈ [−aspect, aspect]),
@@ -20,15 +20,11 @@ export class Painting {
     this.gpu = gpu;
     this.aspect = 1;
     this.texture = null;
-    this.bindGroup = null;
+    /** One uniform buffer + bind group per view (main view, inset), so two draws in one frame do not share a buffer. */
+    this.views = [];
     /** Model matrix of the painting (column-major). Identity = the placement above. */
     this.model = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
-    this.uniforms = device.createBuffer({
-      label: 'painting uniforms',
-      size: 64, // one mat4x4f
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
     this.vertices = device.createBuffer({
       label: 'painting quad',
       size: 6 * 5 * 4, // 6 vertices × (xyz + uv) × 4 bytes
@@ -70,6 +66,7 @@ export class Painting {
     const bitmap = await loadImageBitmap(url);
     this.texture?.destroy();
     this.texture = textureFromBitmap(device, bitmap);
+    this.views = [];
     this.aspect = bitmap.width / bitmap.height;
     this.size = [bitmap.width, bitmap.height];
     bitmap.close();
@@ -86,26 +83,40 @@ export class Painting {
     ]);
     device.queue.writeBuffer(this.vertices, 0, quad);
 
-    this.bindGroup = device.createBindGroup({
+    this.views = [];
+  }
+
+  #view(index) {
+    if (this.views[index]) return this.views[index];
+    const { device } = this.gpu;
+    const buffer = device.createBuffer({
+      label: `painting uniforms ${index}`,
+      size: 64, // one mat4x4f
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    const bindGroup = device.createBindGroup({
       layout: this.pipeline.getBindGroupLayout(0),
       entries: [
-        { binding: 0, resource: { buffer: this.uniforms } },
+        { binding: 0, resource: { buffer } },
         { binding: 1, resource: this.sampler },
         { binding: 2, resource: this.texture.createView() },
       ],
     });
+    return (this.views[index] = { buffer, bindGroup });
   }
 
   /**
    * @param {GPURenderPassEncoder} pass
    * @param {Float32Array} mvp  P · V · M for the painting (column-major)
    * @param {import('./renderer.js').Renderer} renderer  for the vertex counter
+   * @param {number} [view]  0 for the main view, 1 for the inset
    */
-  draw(pass, mvp, renderer) {
-    if (!this.bindGroup) return;
-    this.gpu.device.queue.writeBuffer(this.uniforms, 0, mvp);
+  draw(pass, mvp, renderer, view = 0) {
+    if (!this.texture) return;
+    const v = this.#view(view);
+    this.gpu.device.queue.writeBuffer(v.buffer, 0, mvp);
     pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.bindGroup);
+    pass.setBindGroup(0, v.bindGroup);
     pass.setVertexBuffer(0, this.vertices);
     pass.draw(6);
     renderer.countDraw(6);

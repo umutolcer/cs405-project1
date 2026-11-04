@@ -1,7 +1,7 @@
 /**
- * Pointer plumbing for the canvas. Provided: it only reports events.
- * What a drag or a click MEANS (orbiting the camera, picking and dragging
- * control points on the painting) is yours to implement — Parts C and D.
+ * Pointer plumbing for the canvas: it only reports events. What a drag or a
+ * click means (orbiting the camera, picking and dragging control points on
+ * the painting) is decided in main.js.
  *
  * Positions are given in two forms:
  *   px:  CSS pixels from the canvas' top-left corner

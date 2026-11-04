@@ -1,6 +1,6 @@
 /**
  * WebGPU setup: adapter + device, canvas configuration, sRGB output and
- * resize handling. Provided — you should not need to change this file.
+ * resize handling.
  */
 
 /**
@@ -8,7 +8,7 @@
  * @returns {Promise<{
  *   device: GPUDevice, context: GPUCanvasContext, canvas: HTMLCanvasElement,
  *   canvasFormat: GPUTextureFormat,   // format of the swap-chain texture
- *   viewFormat: GPUTextureFormat,     // format your pipelines must render to
+ *   viewFormat: GPUTextureFormat,     // format the pipelines must render to
  *   encodeSRGB: boolean,              // true → shaders must encode linear → sRGB themselves
  *   onResize: (fn: (w: number, h: number) => void) => void,
  * }>}

@@ -1,5 +1,5 @@
 // Shared colour helpers. Prepended to every shader by withColour() in
-// render/shader.js, so your own shaders can call toOutput() too.
+// render/shader.js, so every shader can call toOutput().
 //
 // Rule: do all lighting and blending maths in LINEAR colour. Return
 // toOutput(colour) from every fragment shader that writes to the canvas.

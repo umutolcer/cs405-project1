@@ -1,6 +1,5 @@
 /**
  * Image → GPU texture, with correct sRGB handling and mipmaps.
- * Provided — you should not need to change this file.
  *
  * JPEG pixels are sRGB-ENCODED. Storing them in an 'rgba8unorm-srgb' texture
  * means the GPU decodes to LINEAR on every sample, and filtering / mipmapping

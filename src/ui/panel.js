@@ -1,14 +1,16 @@
 /**
- * A minimal control panel (no dependencies). Provided.
- * You may replace it with lil-gui if you prefer — that is the only UI library allowed.
+ * A minimal control panel (no dependencies).
  *
  *   const ui = createPanel(document.getElementById('panel'));
  *   const f = ui.folder('Part A');
  *   f.slider('angle', state, 'angle', -Math.PI, Math.PI, 0.01);
- *   f.toggle('T·R·S order', state, 'trs');
- *   f.select('projection', ['perspective', 'orthographic'], cam.projection, v => cam.projection = v);
+ *   f.toggle('wireframe', state, 'ghost');
+ *   f.select('projection', ['perspective', 'orthographic'], camera, 'projection');
  *   f.button('reset', () => reset());
  *   const m = f.text();  m.set(mat4.format(M));          // monospaced readout
+ *
+ * slider / toggle / select are bound to obj[key] and return { update() },
+ * which copies the value back into the widget (after a reset).
  */
 export function createPanel(root) {
   root.classList.add('panel');
@@ -48,18 +50,17 @@ function controls(parent) {
       input.addEventListener('change', () => { obj[key] = input.checked; onChange?.(obj[key]); });
       return { update() { input.checked = !!obj[key]; } };
     },
-    /** Drop-down. options: array of strings or {value, label}. */
-    select(label, options, value, onChange) {
+    /** Drop-down bound to obj[key]. options: array of strings or {value, label}. */
+    select(label, options, obj, key, onChange) {
       const row = el('label', { class: 'row' }, parent);
       el('span', { class: 'name', text: label }, row);
       const sel = el('select', {}, row);
       for (const o of options) {
-        const v = typeof o === 'string' ? o : o.value;
-        const opt = el('option', { value: v, text: typeof o === 'string' ? o : o.label }, sel);
-        if (v === value) opt.selected = true;
+        el('option', { value: typeof o === 'string' ? o : o.value, text: typeof o === 'string' ? o : o.label }, sel);
       }
-      sel.addEventListener('change', () => onChange(sel.value));
-      return { set(v) { sel.value = v; } };
+      sel.value = obj[key];
+      sel.addEventListener('change', () => { obj[key] = sel.value; onChange?.(sel.value); });
+      return { update() { sel.value = obj[key]; } };
     },
     button(label, onClick) {
       const b = el('button', { text: label }, parent);

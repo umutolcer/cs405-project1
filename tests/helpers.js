@@ -1,5 +1,5 @@
-// Test helpers. These do NOT use your code, so a bug in mat4 cannot hide
-// itself by also breaking the checks.
+// Test helpers. These do not use the code under test, so a bug in mat4 cannot
+// hide itself by also breaking the checks.
 import assert from 'node:assert/strict';
 
 export const EPS = 1e-5;
@@ -43,8 +43,3 @@ export function refMul(a, b) {
 }
 
 export const I4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-
-/** True if fn() throws the starter's NotImplemented error. */
-export function isTodo(fn) {
-  try { fn(); return false; } catch (e) { return e?.name === 'NotImplemented'; }
-}

@@ -2,7 +2,7 @@
   "name": "cs405-project1",
   "private": true,
   "version": "0.1.0",
-  "description": "CS405 Fall 2026 - Project 1: Transformations, Projection & Curves from Paintings (WebGPU starter)",
+  "description": "CS405 Fall 2026 - Project 1: Transformations, Projection & Curves from a Painting (WebGPU)",
   "type": "module",
   "engines": {
     "node": ">=20.19.0"

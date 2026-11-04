@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import * as c from '../src/math/curves.js';
-import { close, closeArr, isTodo } from './helpers.js';
+import { close, closeArr } from './helpers.js';
 
 const P2 = [[0, 0], [1, 2], [3, 3], [4, 0]];
 const P3 = [[0, 0, 0], [1, 2, -1], [3, 3, 2], [4, 0, 1]];
@@ -94,16 +94,10 @@ describe('Part D · piecewise C¹', () => {
   });
 });
 
-describe('Part D · second curve family (implement at least one)', () => {
+describe('Part D · second curve family', () => {
   const Q = [[0, 0], [1, 2], [3, 3], [4, 0]];
-  const hasCR = !isTodo(() => c.catmullRom(...Q, 0.5));
-  const hasBS = !isTodo(() => c.bsplineBasis(0.5)) || !isTodo(() => c.bspline(...Q, 0.5));
 
-  test('at least one of catmullRom / bspline is implemented', () => {
-    assert.ok(hasCR || hasBS, 'implement catmullRom, or bsplineBasis + bspline');
-  });
-
-  test('Catmull–Rom passes through p1 and p2 with tangent (p2 − p0)/2', { skip: !hasCR && 'catmullRom not implemented' }, () => {
+  test('Catmull–Rom passes through p1 and p2 with tangent (p2 − p0)/2', () => {
     closeArr(c.catmullRom(...Q, 0), Q[1]);
     closeArr(c.catmullRom(...Q, 1), Q[2]);
     const h = 1e-4, a = c.catmullRom(...Q, 0), b = c.catmullRom(...Q, h);
@@ -111,7 +105,15 @@ describe('Part D · second curve family (implement at least one)', () => {
     closeArr(c.catmullRom([0, 0, 0], [1, 1, 1], [2, 2, 2], [3, 3, 3], 0.5), [1.5, 1.5, 1.5], 1e-5, '3D, collinear:');
   });
 
-  test('B-spline basis: partition of unity, non-negative, known values', { skip: !hasBS && 'bspline not implemented' }, () => {
+  test('Catmull–Rom tangent: analytic, matches finite differences, (p2 − p0)/2 at t = 0', () => {
+    closeArr(c.catmullRomTangent(...Q, 0), [(3 - 0) / 2, (3 - 0) / 2]);
+    closeArr(c.catmullRomTangent(...Q, 1), [(4 - 1) / 2, (0 - 2) / 2]);
+    const h = 1e-5, t = 0.37;
+    const a = c.catmullRom(...Q, t - h), b = c.catmullRom(...Q, t + h);
+    closeArr(c.catmullRomTangent(...Q, t), a.map((x, i) => (b[i] - x) / (2 * h)), 1e-4);
+  });
+
+  test('B-spline basis: partition of unity, non-negative, known values', () => {
     closeArr(c.bsplineBasis(0), [1 / 6, 4 / 6, 1 / 6, 0]);
     closeArr(c.bsplineBasis(1), [0, 1 / 6, 4 / 6, 1 / 6]);
     for (const t of [0.2, 0.5, 0.9]) {
@@ -120,5 +122,23 @@ describe('Part D · second curve family (implement at least one)', () => {
       assert.ok(b.every((x) => x >= 0));
     }
     closeArr(c.bspline(...Q, 0), [(0 + 4 + 3) / 6, (0 + 8 + 3) / 6]);
+  });
+
+  test('B-spline: C² joints and tangent from the basis derivative', () => {
+    // basis derivatives sum to zero, and the end of one span meets the start of the next
+    for (const t of [0, 0.3, 1]) close(c.bsplineBasisDerivative(t).reduce((s, x) => s + x, 0), 0);
+    closeArr(c.bsplineBasisDerivative(1), [0, -0.5, 0, 0.5], 1e-9);
+    const h = 1e-5, t = 0.61;
+    const a = c.bspline(...Q, t - h), b = c.bspline(...Q, t + h);
+    closeArr(c.bsplineTangent(...Q, t), a.map((x, i) => (b[i] - x) / (2 * h)), 1e-4);
+  });
+
+  test('locate maps u to segment index and local parameter', () => {
+    assert.deepEqual(c.locate(3, 0), { i: 0, t: 0 });
+    const { i, t } = c.locate(3, 0.5);
+    assert.equal(i, 1);
+    close(t, 0.5);
+    assert.deepEqual(c.locate(3, 1), { i: 2, t: 1 }); // the end belongs to the last segment
+    assert.deepEqual(c.locate(3, 7), { i: 2, t: 1 });  // clamped
   });
 });

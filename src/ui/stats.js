@@ -1,15 +1,16 @@
 /**
- * Frame-time counter (Part E asks for this readout). Provided.
+ * Frame-time counter and per-frame submission counts (Part E).
  *
  *   frame  — time between successive frames (requestAnimationFrame), smoothed.
  *            Usually capped by the display refresh (16.7 ms at 60 Hz).
- *   cpu    — time your JavaScript spends building and submitting the frame.
+ *   cpu    — time the JavaScript spends building and submitting the frame.
  *   draws / vertices — what you submitted this frame (Renderer.countDraw()).
  *
  * GPU time is not measured here (that needs the 'timestamp-query' feature).
  */
 export class Stats {
-  constructor(parent) {
+  constructor(parent, info = '') {
+    this.info = info;
     this.el = document.createElement('div');
     this.el.className = 'stats';
     parent.appendChild(this.el);
@@ -34,7 +35,9 @@ export class Stats {
     const fps = this.frameMs > 0 ? 1000 / this.frameMs : 0;
     this.el.textContent =
       `frame ${this.frameMs.toFixed(2)} ms (${fps.toFixed(0)} fps) · cpu ${this.cpuMs.toFixed(2)} ms\n` +
-      `draws ${counts.draws} · vertices ${counts.vertices.toLocaleString('en-US')}`;
+      `draws ${counts.draws} · vertices ${counts.vertices.toLocaleString('en-US')}` +
+      (this.info ? `
+${this.info}` : '');
   }
 }
 
